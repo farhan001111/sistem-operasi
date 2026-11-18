@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Dipakai saat fungsi log_line dari anggota 3 belum tersedia.
 backup_log_status() {
     local dest_dir="$1"
     local archive_name="$2"
@@ -49,7 +48,6 @@ create_backup() {
         return 1
     fi
 
-    # Format waktu sesuai materi: YYYYMMDD-HHMMSS
     timestamp=$(date '+%Y%m%d-%H%M%S')
     filename="backup_${timestamp}.tar.gz"
     backup_file="$dest_path/$filename"
@@ -61,7 +59,6 @@ create_backup() {
 
     tar_args=(-czf "$backup_file")
 
-    # EXCLUDE dapat berisi beberapa pola yang dipisahkan spasi.
     if [[ -n "${EXCLUDE:-}" ]]; then
         read -r -a exclude_patterns <<< "$EXCLUDE"
 
