@@ -1,16 +1,23 @@
 
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0}")" && pwd)"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="$SCRIPT_DIR/backup.conf"
 
+# ==========================================
 # Nilai konfigurasi awal
+# ==========================================
+
 SOURCE="$HOME/data-penting"
 DEST="$HOME/backup"
 RETENTION=3
 EXCLUDE="*.tmp draft"
 CRON="0 2 * * *"
 
+# ==========================================
 # Variabel override
+# ==========================================
+
 SRC_OVERRIDE=""
 DEST_OVERRIDE=""
 ACTION=""
@@ -48,6 +55,12 @@ load_config() {
     fi
 
     source "$CONFIG"
+
+    # Validasi nilai konfigurasi
+    if ! [[ "$RETENTION" =~ ^[0-9]+$ ]] || (( RETENTION < 1 )); then
+        echo "GAGAL: RETENTION harus berupa bilangan bulat minimal 1."
+        exit 1
+    fi
 }
 
 # ==========================================
