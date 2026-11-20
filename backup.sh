@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +55,6 @@ load_config() {
 
     source "$CONFIG"
 
-    # Validasi nilai konfigurasi
     if ! [[ "$RETENTION" =~ ^[0-9]+$ ]] || (( RETENTION < 1 )); then
         echo "GAGAL: RETENTION harus berupa bilangan bulat minimal 1."
         exit 1
@@ -79,16 +77,118 @@ do_restore() {
     echo "Fitur restore akan diintegrasikan."
 }
 
-install_cron() {
-    echo "Fitur pemasangan cron akan diintegrasikan."
-}
-
-remove_cron() {
-    echo "Fitur penghapusan cron akan diintegrasikan."
-}
+# ==========================================
+# ANGGOTA 5 - MENU INTERAKTIF
+# ==========================================
 
 interactive_menu() {
-    echo "Menu interaktif akan diintegrasikan."
+    local pilihan
+
+    while true; do
+        echo
+        echo "================================"
+        echo "       SISTEM BACKUP LOKAL"
+        echo "================================"
+        echo "1. Backup sekarang"
+        echo "2. Lihat daftar backup"
+        echo "3. Restore backup"
+        echo "4. Keluar"
+        echo "================================"
+
+        read -rp "Pilih menu [1-4]: " pilihan || break
+
+        case "$pilihan" in
+            1)
+                echo
+                do_backup
+                ;;
+            2)
+                echo
+                do_list
+                ;;
+            3)
+                echo
+                read -rp "Masukkan nama arsip: " RESTORE_ARCHIVE
+
+                if [[ -n "$RESTORE_ARCHIVE" ]]; then
+                    do_restore
+                else
+                    echo "Nama arsip tidak boleh kosong."
+                fi
+                ;;
+            4)
+                echo "Program selesai."
+                break
+                ;;
+            *)
+                echo "Pilihan tidak valid."
+                ;;
+        esac
+    done
+}
+
+# ==========================================
+# ANGGOTA 5 - MEMASANG CRON
+# ==========================================
+
+install_cron() {
+    local SCRIPT_PATH CONFIG_PATH CRON_LINE CURRENT_CRON
+
+    SCRIPT_PATH="$(realpath "$0")" || return 1
+    CONFIG_PATH="$(realpath "$CONFIG")" || return 1
+
+    CRON_LINE="$CRON $SCRIPT_PATH -c $CONFIG_PATH"
+
+    CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
+
+    if printf '%s\n' "$CURRENT_CRON" | grep -Fxq -- "$CRON_LINE"; then
+        echo "Jadwal backup sudah terpasang."
+        return 0
+    fi
+
+    if [[ -n "$CURRENT_CRON" ]]; then
+        printf '%s\n%s\n' "$CURRENT_CRON" "$CRON_LINE" | crontab -
+    else
+        printf '%s\n' "$CRON_LINE" | crontab -
+    fi
+
+    if [[ $? -eq 0 ]]; then
+        echo "Jadwal backup berhasil dipasang."
+        echo "Jadwal: $CRON"
+    else
+        echo "GAGAL: Tidak dapat memasang jadwal Cron."
+        return 1
+    fi
+}
+
+# ==========================================
+# ANGGOTA 5 - MENGHAPUS CRON
+# ==========================================
+
+remove_cron() {
+    local SCRIPT_PATH CONFIG_PATH CRON_LINE CURRENT_CRON
+
+    SCRIPT_PATH="$(realpath "$0")" || return 1
+    CONFIG_PATH="$(realpath "$CONFIG")" || return 1
+
+    CRON_LINE="$CRON $SCRIPT_PATH -c $CONFIG_PATH"
+
+    CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
+
+    if ! printf '%s\n' "$CURRENT_CRON" | grep -Fxq -- "$CRON_LINE"; then
+        echo "Jadwal backup tidak ditemukan."
+        return 0
+    fi
+
+    printf '%s\n' "$CURRENT_CRON" |
+        grep -Fvx -- "$CRON_LINE" | crontab -
+
+    if [[ $? -eq 0 ]]; then
+        echo "Jadwal backup berhasil dihapus."
+    else
+        echo "GAGAL: Tidak dapat menghapus jadwal Cron."
+        return 1
+    fi
 }
 
 # ==========================================
