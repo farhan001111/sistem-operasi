@@ -1,18 +1,28 @@
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0}")" && pwd)"
 CONFIG="$SCRIPT_DIR/backup.conf"
 
-# Variabel default
+# Nilai konfigurasi awal
 SOURCE="$HOME/data-penting"
 DEST="$HOME/backup"
 RETENTION=3
 EXCLUDE="*.tmp draft"
 CRON="0 2 * * *"
 
-# ------------------------------------------
+# Variabel override
+SRC_OVERRIDE=""
+DEST_OVERRIDE=""
+ACTION=""
+RESTORE_ARCHIVE=""
+
+# ==========================================
 # Fungsi bantuan
-# ------------------------------------------
+# ==========================================
+
 show_help() {
+    echo "Sistem Backup Lokal"
+    echo
     echo "Penggunaan: ./backup.sh [opsi]"
     echo
     echo "Opsi:"
@@ -26,21 +36,24 @@ show_help() {
     echo "  -U          Hapus crontab"
 }
 
-# ------------------------------------------
-# Fungsi pembacaan konfigurasi
-# ------------------------------------------
+# ==========================================
+# Membaca konfigurasi
+# ==========================================
+
 load_config() {
     if [[ ! -f "$CONFIG" ]]; then
-        echo "GAGAL: File konfigurasi tidak ditemukan: $CONFIG"
+        echo "GAGAL: File konfigurasi tidak ditemukan."
+        echo "Lokasi: $CONFIG"
         exit 1
     fi
 
     source "$CONFIG"
 }
 
-# ------------------------------------------
+# ==========================================
 # Placeholder fitur anggota lain
-# ------------------------------------------
+# ==========================================
+
 do_backup() {
     echo "Fitur backup akan diintegrasikan."
 }
@@ -62,23 +75,23 @@ remove_cron() {
 }
 
 interactive_menu() {
-    echo "Menu interaktif akan dibuat oleh Anggota 5."
+    echo "Menu interaktif akan diintegrasikan."
 }
 
-# ------------------------------------------
-# Program utama
-# ------------------------------------------
-
+# ==========================================
 # Tanpa argumen: menu interaktif
+# ==========================================
+
 if [[ $# -eq 0 ]]; then
     load_config
     interactive_menu
     exit 0
 fi
 
-ACTION=""
+# ==========================================
+# Membaca argumen CLI
+# ==========================================
 
-# Membaca opsi CLI
 while getopts ":hc:s:d:lr:iU" opt; do
     case "$opt" in
         h)
@@ -89,10 +102,10 @@ while getopts ":hc:s:d:lr:iU" opt; do
             CONFIG="$OPTARG"
             ;;
         s)
-            SOURCE="$OPTARG"
+            SRC_OVERRIDE="$OPTARG"
             ;;
         d)
-            DEST="$OPTARG"
+            DEST_OVERRIDE="$OPTARG"
             ;;
         l)
             ACTION="list"
@@ -119,16 +132,28 @@ while getopts ":hc:s:d:lr:iU" opt; do
     esac
 done
 
-# Membaca konfigurasi terlebih dahulu
+# ==========================================
+# Membaca konfigurasi
+# ==========================================
+
 load_config
 
-# Override konfigurasi CLI
-# Nilai yang diberikan melalui -s dan -d
-# harus mengalahkan nilai dari konfigurasi.
+# ==========================================
+# Override konfigurasi
+# ==========================================
 
-# (Bagian override akan disempurnakan pada integrasi)
+if [[ -n "$SRC_OVERRIDE" ]]; then
+    SOURCE="$SRC_OVERRIDE"
+fi
 
-# Menentukan aksi
+if [[ -n "$DEST_OVERRIDE" ]]; then
+    DEST="$DEST_OVERRIDE"
+fi
+
+# ==========================================
+# Menjalankan aksi
+# ==========================================
+
 case "$ACTION" in
     list)
         do_list
