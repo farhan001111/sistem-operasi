@@ -1,66 +1,48 @@
-#!/bin/bash
-
-do_list() {
-    local dest_dir="${DEST:-}"
-    local archive
-    local filename
-    local size
-    local found=0
-
-    if [[ -z "$dest_dir" ]]; then
-        echo "GAGAL: Folder DEST belum diatur."
-        return 1
-    fi
-
-    if [[ ! -d "$dest_dir" ]]; then
-        echo "Folder backup belum tersedia: $dest_dir"
-        echo "Belum ada arsip backup."
-        return 0
-    fi
-
-    echo "================================"
-    echo "       DAFTAR ARSIP BACKUP"
-    echo "================================"
-
-    for archive in "$dest_dir"/backup_*.tar.gz; do
-        [[ -f "$archive" ]] || continue
-
-        filename="${archive##*/}"
-        size=$(du -h "$archive" | cut -f1)
-
-        printf "%-35s %10s\n" "$filename" "$size"
-        found=1
-    done
-
-    if [[ "$found" -eq 0 ]]; then
-        echo "Belum ada arsip backup."
-    fi
-
-    echo "================================"
-
-    return 0
-}
 
 do_restore() {
     local dest_dir="${DEST:-}"
-    local archive_name="${RESTORE_ARCHIVE:-}"
+    local archive_arg="${RESTORE_ARCHIVE:-}"
+    local archive_name
     local archive_path
     local restore_dir
     local entry
+    local dest_abs
+    local archive_parent
 
     if [[ -z "$dest_dir" ]]; then
         echo "GAGAL: Folder DEST belum diatur."
         return 1
     fi
 
-    if [[ -z "$archive_name" ]]; then
+    if [[ -z "$archive_arg" ]]; then
         echo "GAGAL: Nama arsip belum diberikan."
         return 1
     fi
 
-    if [[ "$archive_name" == */* || "$archive_name" == "." || "$archive_name" == ".." ]]; then
-        echo "GAGAL: Masukkan nama arsip saja."
+    if [[ ! -d "$dest_dir" ]]; then
+        echo "GAGAL: Folder DEST tidak ditemukan."
         return 1
+    fi
+
+    dest_abs="$(cd -- "$dest_dir" && pwd -P)" || return 1
+
+    if [[ "$archive_arg" == */* ]]; then
+        archive_name="${archive_arg##*/}"
+
+        archive_parent="$(cd -- "$(dirname -- "$archive_arg")" 2>/dev/null && pwd -P)" || {
+            echo "GAGAL: Lokasi arsip tidak valid."
+            return 1
+        }
+
+        if [[ "$archive_parent" != "$dest_abs" ]]; then
+            echo "GAGAL: Arsip harus berada di folder DEST."
+            return 1
+        fi
+
+        archive_path="$archive_parent/$archive_name"
+    else
+        archive_name="$archive_arg"
+        archive_path="$dest_abs/$archive_name"
     fi
 
     if [[ ! "$archive_name" =~ ^backup_[0-9]{8}-[0-9]{6}\.tar\.gz$ ]]; then
@@ -68,8 +50,7 @@ do_restore() {
         return 1
     fi
 
-    archive_path="$dest_dir/$archive_name"
-    restore_dir="$dest_dir/restore"
+    restore_dir="$dest_abs/restore"
 
     if [[ ! -f "$archive_path" ]]; then
         echo "GAGAL: Arsip tidak ditemukan: $archive_name"
