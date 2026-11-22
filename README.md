@@ -114,3 +114,12 @@ bash check-sample.sh
 | 5 | Menu interaktif, crontab |kania ghaitsa aqira
 | 6 | Integrasi, pengujian, README, laporan, slide |M.Yogi Kafrawi
 
+anggota:
+Farhan Syafiq  (250810701100039) bagian 1
+M.Yogi Kafrawi (250810701100114) bagian 6
+Arqan Syahputra (210810701100057) bagian 2
+Tagaev Asliddin  (250810701100117) bagian 4
+kania ghaitsa aqira (250810701100035) bagian 5
+Fatin Fadel Al-Annari  (250810701100061) bagian 3
+
+
