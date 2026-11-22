@@ -107,11 +107,10 @@ bash check-sample.sh
 
 | Anggota | Bagian |
 |---|---|
-| 1 | Program utama, konfigurasi, opsi CLI |
-| 2 | Backup `.tar.gz`, nama arsip berdasarkan waktu, exclude |
-| 3 | Retensi, log |
-| 4 | List dan restore |
-| 5 | Menu interaktif, crontab |
-| 6 | Integrasi, pengujian, README, laporan, slide |
+| 1 | Program utama, konfigurasi, opsi CLI |Farhan Syafiq
+| 2 | Backup `.tar.gz`, nama arsip berdasarkan waktu, exclude |Arqan Syahputra 
+| 3 | Retensi, log |Fatin Fadel Al-Annari 
+| 4 | List dan restore |Tagaev Asliddin
+| 5 | Menu interaktif, crontab |kania ghaitsa aqira
+| 6 | Integrasi, pengujian, README, laporan, slide |M.Yogi Kafrawi
 
-(Isi nama anggota sesuai kelompok.)
