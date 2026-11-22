@@ -1,6 +1,6 @@
 #!/bin/bash
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 CONFIG="$SCRIPT_DIR/backup.conf"
 
 SOURCE="$HOME/data-penting"
@@ -14,89 +14,118 @@ DEST_OVERRIDE=""
 ACTION=""
 RESTORE_ARCHIVE=""
 
+for helper in retensi_log.sh backup_function.sh list_restore_function.sh; do
+    if [[ ! -f "$SCRIPT_DIR/$helper" ]]; then
+        echo "GAGAL: File pendukung tidak ditemukan: $SCRIPT_DIR/$helper" >&2
+        exit 1
+    fi
+    source "$SCRIPT_DIR/$helper"
+done
+
+show_help() {
+    echo "Sistem Backup Lokal"
+    echo
+    echo "Penggunaan: ./backup.sh [opsi]"
+    echo
+    echo "Opsi:"
+    echo "  -h          Menampilkan bantuan"
+    echo "  -c FILE     Menggunakan file konfigurasi FILE (default: backup.conf)"
+    echo "  -s SRC      Override nilai SOURCE"
+    echo "  -d DEST     Override nilai DEST"
+    echo "  -l          Menampilkan daftar arsip di DEST"
+    echo "  -r ARSIP    Restore ARSIP ke folder restore/ di dalam DEST"
+    echo "  -i          Memasang baris crontab dari konfigurasi"
+    echo "  -U          Menghapus baris crontab yang dipasang"
+    echo
+    echo "Tanpa opsi apa pun: membuka menu interaktif."
+    echo "Hanya opsi -c/-s/-d: menjalankan backup satu kali."
+}
+
 load_config() {
-    if [[ -f "$CONFIG" ]]; then
-        source "$CONFIG"
-    else
-        echo "GAGAL: File konfigurasi tidak ditemukan."
+    if [[ ! -f "$CONFIG" ]]; then
+        echo "GAGAL: File konfigurasi tidak ditemukan: $CONFIG" >&2
         exit 1
     fi
 
-    if [[ -n "$SRC_OVERRIDE" ]]; then
-        SOURCE="$SRC_OVERRIDE"
-    fi
+    source "$CONFIG"
 
-    if [[ -n "$DEST_OVERRIDE" ]]; then
-        DEST="$DEST_OVERRIDE"
+    [[ -n "$SRC_OVERRIDE" ]] && SOURCE="$SRC_OVERRIDE"
+    [[ -n "$DEST_OVERRIDE" ]] && DEST="$DEST_OVERRIDE"
+
+    if [[ ! "$RETENTION" =~ ^[1-9][0-9]*$ ]]; then
+        echo "GAGAL: RETENTION harus bilangan bulat minimal 1 (nilai: '$RETENTION')." >&2
+        exit 1
     fi
 }
 
-show_help() {
-    echo "Penggunaan: ./backup.sh [opsi]"
-    echo
-    echo "-h        Menampilkan bantuan"
-    echo "-c FILE   Menggunakan file konfigurasi"
-    echo "-s SRC    Mengubah folder sumber"
-    echo "-d DEST   Mengubah folder tujuan"
-    echo "-l        Menampilkan daftar backup"
-    echo "-r ARSIP  Melakukan restore"
-    echo "-i        Memasang cron"
-    echo "-U        Menghapus cron"
-    echo
+abs_path() {
+    local dir
+    dir="$(cd -- "$(dirname -- "$1")" 2>/dev/null && pwd -P)" || return 1
+    printf '%s/%s\n' "$dir" "$(basename -- "$1")"
 }
 
 do_backup() {
-    create_backup
-
-    if [[ $? -eq 0 ]]; then
-        apply_retention
-    fi
+    create_backup || return 1
+    apply_retention
 }
 
 install_cron() {
-    local script_path="$SCRIPT_DIR/backup.sh"
-    local cron_line="$CRON /bin/bash \"$script_path\" -c \"$CONFIG\""
-    local current_cron
+    local script_path="$SCRIPT_DIR/$SCRIPT_NAME"
+    local config_path
+    local cron_line
+    local marker
+    local current
+    local -a fields
 
-    current_cron=$(crontab -l 2>/dev/null)
-
-    if echo "$current_cron" | grep -Fq "$script_path"; then
-        echo "Cron sudah terpasang."
-        return 0
+    read -r -a fields <<< "$CRON"
+    if (( ${#fields[@]} != 5 )); then
+        echo "GAGAL: CRON harus berisi 5 field (nilai: '$CRON')." >&2
+        return 1
     fi
 
-    (echo "$current_cron"; echo "$cron_line") | crontab -
+    config_path="$(abs_path "$CONFIG")" || {
+        echo "GAGAL: Path konfigurasi tidak valid." >&2
+        return 1
+    }
 
-    if [[ $? -eq 0 ]]; then
+    cron_line="$CRON $script_path -c $config_path"
+    marker=" $script_path -c "
+
+    current="$(crontab -l 2>/dev/null)"
+
+    if { printf '%s\n' "$current" | grep -Fv -- "$marker" | grep -v '^$'
+         echo "$cron_line"; } | crontab -; then
         echo "Cron berhasil dipasang."
+        echo "Baris: $cron_line"
     else
-        echo "GAGAL: Cron tidak berhasil dipasang."
+        echo "GAGAL: Cron tidak berhasil dipasang." >&2
         return 1
     fi
 }
 
 remove_cron() {
-    local script_path="$SCRIPT_DIR/backup.sh"
-    local current_cron
+    local script_path="$SCRIPT_DIR/$SCRIPT_NAME"
+    local marker=" $script_path -c "
+    local current
 
-    current_cron=$(crontab -l 2>/dev/null)
+    current="$(crontab -l 2>/dev/null)"
 
-    if ! echo "$current_cron" | grep -Fq "$script_path"; then
+    if ! printf '%s\n' "$current" | grep -Fq -- "$marker"; then
         echo "Cron tidak ditemukan."
         return 0
     fi
 
-    echo "$current_cron" | grep -Fv "$script_path" | crontab -
-
-    if [[ $? -eq 0 ]]; then
+    if printf '%s\n' "$current" | grep -Fv -- "$marker" | crontab -; then
         echo "Cron berhasil dihapus."
     else
-        echo "GAGAL: Cron tidak berhasil dihapus."
+        echo "GAGAL: Cron tidak berhasil dihapus." >&2
         return 1
     fi
 }
 
 interactive_menu() {
+    local pilihan
+
     while true; do
         echo
         echo "================================"
@@ -110,35 +139,28 @@ interactive_menu() {
         echo "6. Keluar"
         echo "================================"
 
-        read -rp "Pilih menu [1-6]: " pilihan
+        read -rp "Pilih menu [1-6]: " pilihan || { echo; exit 0; }
 
         case "$pilihan" in
-            1)
-                do_backup
-                ;;
-            2)
-                do_list
-                ;;
+            1) do_backup ;;
+            2) do_list ;;
             3)
-                read -rp "Masukkan nama arsip: " RESTORE_ARCHIVE
+                do_list
+                read -rp "Masukkan nama arsip: " RESTORE_ARCHIVE || { echo; exit 0; }
                 do_restore
                 ;;
-            4)
-                install_cron
-                ;;
-            5)
-                remove_cron
-                ;;
+            4) install_cron ;;
+            5) remove_cron ;;
             6)
                 echo "Program selesai."
                 exit 0
                 ;;
-            *)
-                echo "Pilihan tidak valid."
-                ;;
+            *) echo "Pilihan tidak valid." ;;
         esac
     done
 }
+
+NUM_ARGS=$#
 
 while getopts ":hc:s:d:lr:iU" opt; do
     case "$opt" in
@@ -146,35 +168,23 @@ while getopts ":hc:s:d:lr:iU" opt; do
             show_help
             exit 0
             ;;
-        c)
-            CONFIG="$OPTARG"
-            ;;
-        s)
-            SRC_OVERRIDE="$OPTARG"
-            ;;
-        d)
-            DEST_OVERRIDE="$OPTARG"
-            ;;
-        l)
-            ACTION="list"
-            ;;
+        c) CONFIG="$OPTARG" ;;
+        s) SRC_OVERRIDE="$OPTARG" ;;
+        d) DEST_OVERRIDE="$OPTARG" ;;
+        l) ACTION="list" ;;
         r)
             ACTION="restore"
             RESTORE_ARCHIVE="$OPTARG"
             ;;
-        i)
-            ACTION="install"
-            ;;
-        U)
-            ACTION="remove"
-            ;;
+        i) ACTION="install" ;;
+        U) ACTION="remove" ;;
         :)
-            echo "GAGAL: Opsi -$OPTARG membutuhkan argumen."
+            echo "GAGAL: Opsi -$OPTARG membutuhkan argumen." >&2
             exit 1
             ;;
         \?)
-            echo "GAGAL: Opsi tidak dikenal."
-            show_help
+            echo "GAGAL: Opsi tidak dikenal: -$OPTARG" >&2
+            show_help >&2
             exit 1
             ;;
     esac
@@ -182,29 +192,16 @@ done
 
 load_config
 
-source "$SCRIPT_DIR/retensi_log.sh"
-source "$SCRIPT_DIR/backup_function.sh"
-source "$SCRIPT_DIR/list_restore_function.sh"
-
-if [[ -z "$ACTION" ]]; then
-    if [[ $# -eq 0 ]]; then
-        interactive_menu
-    else
-        do_backup
-    fi
-else
-    case "$ACTION" in
-        list)
-            do_list
-            ;;
-        restore)
-            do_restore
-            ;;
-        install)
-            install_cron
-            ;;
-        remove)
-            remove_cron
-            ;;
-    esac
+if (( NUM_ARGS == 0 )); then
+    interactive_menu
+    exit 0
 fi
+
+case "$ACTION" in
+    list)    do_list ;;
+    restore) do_restore ;;
+    install) install_cron ;;
+    remove)  remove_cron ;;
+    *)       do_backup ;;
+esac
+exit $?
