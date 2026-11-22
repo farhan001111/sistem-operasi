@@ -1,5 +1,4 @@
 #!/bin/bash
-
 backup_log_status() {
     local dest_dir="$1"
     local archive_name="$2"
@@ -24,13 +23,9 @@ create_backup() {
     local filename
     local backup_file
     local pattern
+    local rel
     local -a tar_args
     local -a exclude_patterns
-
-    if [[ -z "$source_dir" || ! -d "$source_dir" ]]; then
-        echo "Error: Folder sumber tidak ditemukan: $source_dir" >&2
-        return 1
-    fi
 
     if [[ -z "$dest_dir" ]]; then
         echo "Error: Folder tujuan belum diatur." >&2
@@ -42,20 +37,34 @@ create_backup() {
         return 1
     fi
 
-    if ! source_path=$(cd -- "$source_dir" && pwd -P) ||
-       ! dest_path=$(cd -- "$dest_dir" && pwd -P); then
-        echo "Error: Gagal membaca lokasi folder." >&2
+    if ! dest_path=$(cd -- "$dest_dir" && pwd -P); then
+        echo "Error: Gagal membaca lokasi folder tujuan." >&2
         return 1
     fi
 
     timestamp=$(date '+%Y%m%d-%H%M%S')
     filename="backup_${timestamp}.tar.gz"
-    backup_file="$dest_path/$filename"
 
-    if [[ -e "$backup_file" ]]; then
-        echo "Error: Arsip dengan nama ini sudah ada: $backup_file" >&2
+    if [[ -z "$source_dir" || ! -d "$source_dir" ]]; then
+        echo "Error: Folder sumber tidak ditemukan: $source_dir" >&2
+        backup_log_status "$dest_path" "$filename" "GAGAL" ||
+            echo "Peringatan: status gagal tidak dapat dicatat ke log." >&2
         return 1
     fi
+
+    if ! source_path=$(cd -- "$source_dir" && pwd -P); then
+        echo "Error: Gagal membaca lokasi folder sumber." >&2
+        backup_log_status "$dest_path" "$filename" "GAGAL" || true
+        return 1
+    fi
+
+    backup_file="$dest_path/$filename"
+    while [[ -e "$backup_file" ]]; do
+        sleep 1
+        timestamp=$(date '+%Y%m%d-%H%M%S')
+        filename="backup_${timestamp}.tar.gz"
+        backup_file="$dest_path/$filename"
+    done
 
     tar_args=(-czf "$backup_file")
 
@@ -67,17 +76,20 @@ create_backup() {
         done
     fi
 
+    if [[ "$dest_path" == "$source_path"/* ]]; then
+        rel="${dest_path#"$source_path"/}"
+        tar_args+=("--exclude=./$rel")
+    fi
+
     echo "Memulai proses backup..."
 
-    if tar "${tar_args[@]}" \
-        -C "$(dirname -- "$source_path")" \
-        -- "$(basename -- "$source_path")" &&
+    if tar "${tar_args[@]}" -C "$source_path" . &&
        tar -tzf "$backup_file" >/dev/null; then
         echo "Backup berhasil!"
         echo "File: $backup_file"
 
         if ! backup_log_status "$dest_path" "$filename" "SUKSES"; then
-            echo "Peringatan: backup berhasil, tetapi status gagal dicatat ke log." >&2
+            echo "Peringatan: backup berhasil, tetapi status tidak dapat dicatat ke log." >&2
         fi
 
         return 0
