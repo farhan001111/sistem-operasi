@@ -3,87 +3,100 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="$SCRIPT_DIR/backup.conf"
 
-# ==========================================
-# Nilai konfigurasi awal
-# ==========================================
-
 SOURCE="$HOME/data-penting"
 DEST="$HOME/backup"
 RETENTION=3
 EXCLUDE="*.tmp draft"
 CRON="0 2 * * *"
 
-# ==========================================
-# Variabel override
-# ==========================================
-
 SRC_OVERRIDE=""
 DEST_OVERRIDE=""
 ACTION=""
 RESTORE_ARCHIVE=""
 
-# ==========================================
-# Fungsi bantuan
-# ==========================================
+load_config() {
+    if [[ -f "$CONFIG" ]]; then
+        source "$CONFIG"
+    else
+        echo "GAGAL: File konfigurasi tidak ditemukan."
+        exit 1
+    fi
+
+    if [[ -n "$SRC_OVERRIDE" ]]; then
+        SOURCE="$SRC_OVERRIDE"
+    fi
+
+    if [[ -n "$DEST_OVERRIDE" ]]; then
+        DEST="$DEST_OVERRIDE"
+    fi
+}
 
 show_help() {
-    echo "Sistem Backup Lokal"
-    echo
     echo "Penggunaan: ./backup.sh [opsi]"
     echo
-    echo "Opsi:"
-    echo "  -h          Tampilkan bantuan"
-    echo "  -c FILE     Gunakan file konfigurasi"
-    echo "  -s SRC      Override folder sumber"
-    echo "  -d DEST     Override folder tujuan"
-    echo "  -l          Tampilkan daftar arsip"
-    echo "  -r ARSIP    Restore arsip"
-    echo "  -i          Pasang crontab"
-    echo "  -U          Hapus crontab"
+    echo "-h        Menampilkan bantuan"
+    echo "-c FILE   Menggunakan file konfigurasi"
+    echo "-s SRC    Mengubah folder sumber"
+    echo "-d DEST   Mengubah folder tujuan"
+    echo "-l        Menampilkan daftar backup"
+    echo "-r ARSIP  Melakukan restore"
+    echo "-i        Memasang cron"
+    echo "-U        Menghapus cron"
+    echo
 }
-
-# ==========================================
-# Membaca konfigurasi
-# ==========================================
-
-load_config() {
-    if [[ ! -f "$CONFIG" ]]; then
-        echo "GAGAL: File konfigurasi tidak ditemukan."
-        echo "Lokasi: $CONFIG"
-        exit 1
-    fi
-
-    source "$CONFIG"
-
-    if ! [[ "$RETENTION" =~ ^[0-9]+$ ]] || (( RETENTION < 1 )); then
-        echo "GAGAL: RETENTION harus berupa bilangan bulat minimal 1."
-        exit 1
-    fi
-}
-
-# ==========================================
-# Placeholder fitur anggota lain
-# ==========================================
 
 do_backup() {
-    echo "Fitur backup akan diintegrasikan."
+    create_backup
+
+    if [[ $? -eq 0 ]]; then
+        apply_retention
+    fi
 }
 
-do_list() {
-    echo "Fitur list akan diintegrasikan."
+install_cron() {
+    local script_path="$SCRIPT_DIR/backup.sh"
+    local cron_line="$CRON /bin/bash \"$script_path\" -c \"$CONFIG\""
+    local current_cron
+
+    current_cron=$(crontab -l 2>/dev/null)
+
+    if echo "$current_cron" | grep -Fq "$script_path"; then
+        echo "Cron sudah terpasang."
+        return 0
+    fi
+
+    (echo "$current_cron"; echo "$cron_line") | crontab -
+
+    if [[ $? -eq 0 ]]; then
+        echo "Cron berhasil dipasang."
+    else
+        echo "GAGAL: Cron tidak berhasil dipasang."
+        return 1
+    fi
 }
 
-do_restore() {
-    echo "Fitur restore akan diintegrasikan."
-}
+remove_cron() {
+    local script_path="$SCRIPT_DIR/backup.sh"
+    local current_cron
 
-# ==========================================
-# ANGGOTA 5 - MENU INTERAKTIF
-# ==========================================
+    current_cron=$(crontab -l 2>/dev/null)
+
+    if ! echo "$current_cron" | grep -Fq "$script_path"; then
+        echo "Cron tidak ditemukan."
+        return 0
+    fi
+
+    echo "$current_cron" | grep -Fv "$script_path" | crontab -
+
+    if [[ $? -eq 0 ]]; then
+        echo "Cron berhasil dihapus."
+    else
+        echo "GAGAL: Cron tidak berhasil dihapus."
+        return 1
+    fi
+}
 
 interactive_menu() {
-    local pilihan
-
     while true; do
         echo
         echo "================================"
@@ -92,33 +105,33 @@ interactive_menu() {
         echo "1. Backup sekarang"
         echo "2. Lihat daftar backup"
         echo "3. Restore backup"
-        echo "4. Keluar"
+        echo "4. Pasang cron"
+        echo "5. Hapus cron"
+        echo "6. Keluar"
         echo "================================"
 
-        read -rp "Pilih menu [1-4]: " pilihan || break
+        read -rp "Pilih menu [1-6]: " pilihan
 
         case "$pilihan" in
             1)
-                echo
                 do_backup
                 ;;
             2)
-                echo
                 do_list
                 ;;
             3)
-                echo
                 read -rp "Masukkan nama arsip: " RESTORE_ARCHIVE
-
-                if [[ -n "$RESTORE_ARCHIVE" ]]; then
-                    do_restore
-                else
-                    echo "Nama arsip tidak boleh kosong."
-                fi
+                do_restore
                 ;;
             4)
+                install_cron
+                ;;
+            5)
+                remove_cron
+                ;;
+            6)
                 echo "Program selesai."
-                break
+                exit 0
                 ;;
             *)
                 echo "Pilihan tidak valid."
@@ -126,84 +139,6 @@ interactive_menu() {
         esac
     done
 }
-
-# ==========================================
-# ANGGOTA 5 - MEMASANG CRON
-# ==========================================
-
-install_cron() {
-    local SCRIPT_PATH CONFIG_PATH CRON_LINE CURRENT_CRON
-
-    SCRIPT_PATH="$(realpath "$0")" || return 1
-    CONFIG_PATH="$(realpath "$CONFIG")" || return 1
-
-    CRON_LINE="$CRON $SCRIPT_PATH -c $CONFIG_PATH"
-
-    CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
-
-    if printf '%s\n' "$CURRENT_CRON" | grep -Fxq -- "$CRON_LINE"; then
-        echo "Jadwal backup sudah terpasang."
-        return 0
-    fi
-
-    if [[ -n "$CURRENT_CRON" ]]; then
-        printf '%s\n%s\n' "$CURRENT_CRON" "$CRON_LINE" | crontab -
-    else
-        printf '%s\n' "$CRON_LINE" | crontab -
-    fi
-
-    if [[ $? -eq 0 ]]; then
-        echo "Jadwal backup berhasil dipasang."
-        echo "Jadwal: $CRON"
-    else
-        echo "GAGAL: Tidak dapat memasang jadwal Cron."
-        return 1
-    fi
-}
-
-# ==========================================
-# ANGGOTA 5 - MENGHAPUS CRON
-# ==========================================
-
-remove_cron() {
-    local SCRIPT_PATH CONFIG_PATH CRON_LINE CURRENT_CRON
-
-    SCRIPT_PATH="$(realpath "$0")" || return 1
-    CONFIG_PATH="$(realpath "$CONFIG")" || return 1
-
-    CRON_LINE="$CRON $SCRIPT_PATH -c $CONFIG_PATH"
-
-    CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
-
-    if ! printf '%s\n' "$CURRENT_CRON" | grep -Fxq -- "$CRON_LINE"; then
-        echo "Jadwal backup tidak ditemukan."
-        return 0
-    fi
-
-    printf '%s\n' "$CURRENT_CRON" |
-        grep -Fvx -- "$CRON_LINE" | crontab -
-
-    if [[ $? -eq 0 ]]; then
-        echo "Jadwal backup berhasil dihapus."
-    else
-        echo "GAGAL: Tidak dapat menghapus jadwal Cron."
-        return 1
-    fi
-}
-
-# ==========================================
-# Tanpa argumen: menu interaktif
-# ==========================================
-
-if [[ $# -eq 0 ]]; then
-    load_config
-    interactive_menu
-    exit 0
-fi
-
-# ==========================================
-# Membaca argumen CLI
-# ==========================================
 
 while getopts ":hc:s:d:lr:iU" opt; do
     case "$opt" in
@@ -228,59 +163,48 @@ while getopts ":hc:s:d:lr:iU" opt; do
             RESTORE_ARCHIVE="$OPTARG"
             ;;
         i)
-            ACTION="install_cron"
+            ACTION="install"
             ;;
         U)
-            ACTION="remove_cron"
+            ACTION="remove"
             ;;
         :)
             echo "GAGAL: Opsi -$OPTARG membutuhkan argumen."
             exit 1
             ;;
         \?)
-            echo "GAGAL: Opsi tidak dikenal: -$OPTARG"
+            echo "GAGAL: Opsi tidak dikenal."
             show_help
             exit 1
             ;;
     esac
 done
 
-# ==========================================
-# Membaca konfigurasi
-# ==========================================
-
 load_config
 
-# ==========================================
-# Override konfigurasi
-# ==========================================
+source "$SCRIPT_DIR/retensi_log.sh"
+source "$SCRIPT_DIR/backup_function.sh"
+source "$SCRIPT_DIR/list_restore_function.sh"
 
-if [[ -n "$SRC_OVERRIDE" ]]; then
-    SOURCE="$SRC_OVERRIDE"
-fi
-
-if [[ -n "$DEST_OVERRIDE" ]]; then
-    DEST="$DEST_OVERRIDE"
-fi
-
-# ==========================================
-# Menjalankan aksi
-# ==========================================
-
-case "$ACTION" in
-    list)
-        do_list
-        ;;
-    restore)
-        do_restore
-        ;;
-    install_cron)
-        install_cron
-        ;;
-    remove_cron)
-        remove_cron
-        ;;
-    *)
+if [[ -z "$ACTION" ]]; then
+    if [[ $# -eq 0 ]]; then
+        interactive_menu
+    else
         do_backup
-        ;;
-esac
+    fi
+else
+    case "$ACTION" in
+        list)
+            do_list
+            ;;
+        restore)
+            do_restore
+            ;;
+        install)
+            install_cron
+            ;;
+        remove)
+            remove_cron
+            ;;
+    esac
+fi
