@@ -1,6 +1,6 @@
 # Sistem Backup Lokal (`backup.sh`)
 
-UAS Praktikum Sistem Operasi - Lab Sistem Operasi A, Semester 2026.
+UAS Praktikum Sistem Operasi Kelas B.
 
 Script bash untuk membuat backup `.tar.gz` dari sebuah direktori, lengkap dengan
 retensi, log, list, restore, menu interaktif, dan penjadwalan lewat crontab.
